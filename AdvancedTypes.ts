@@ -357,5 +357,94 @@ let unproxifyPerson: Person = unproxify(proxifyPerson);
 
 /**
  * *条件类型 -- Conditional Types
- * 
+ * 例如: `T extends U ? X : Y`
+ */
+// 有的类型可以立即解析:
+declare function f<T extends boolean>(x: T): T extends true ? string : number;
+// Type is 'string | number
+let x = f(Math.random() < 0.5)
+
+// 有的类型解析是被推迟的, 因为有类型变量未确定
+interface Foo {
+    propA: boolean;
+    propB: boolean;
+}
+declare function f<T>(x: T): T extends Foo ? string : number;
+
+function foo<U>(x: U) {
+    let a = f(x);
+    // 类型U未确定, 但是可以赋值, 因为a的类型只会是string或number
+    let b: string | number = a;
+}
+
+/**
+ * 分配条件类型
+ * 自动将条件类型分配在联合类型的每个类型中
+ * 例如`T extends U ? X : Y`, 如果T的类型是 `A | B | C`, 会被解析为 `(A extends U ? X : Y) | (B extends U ? X : Y) | (C extends U ? X : Y)`
+ */
+// * 从T类型中移除可以赋值给U类型的可能类型
+type Diff<T, U> = T extends U ? never : T;
+type T30 = Diff<"a" | "b" | "c" | "d", "a" | "c" | "f">;  // "b" | "d"
+// * 从T类型中移除不能赋值给U类型的可能类型
+type Filter<T, U> = T extends U ? T : never;
+type T31 = Filter<"a" | "b" | "c" | "d", "a" | "c" | "f">; // "a" | "c"
+
+type T32 = Diff<string | number | (() => void), Function>; // string | number
+type T33 = Filter<string | number | (() => void), Function>; // () => void
+
+// * 条件类型与映射类型结合使用, 可以方便地取用某个类型的子集, 移除不需要的类型
+// 1. 值为函数的键名
+type FunctionPropertyNames<T> = {[K in keyof T]: T[K] extends Function ? K : never}[keyof T];
+// 2. 值为函数的属性
+type FunctionProperties<T> = Pick<T, FunctionPropertyNames<T>>;
+// 3. 值为非函数的键名
+type NonFunctionPropertyNames<T> = {[K in keyof T]: T[K] extends Function ? never : K}[keyof T];
+// 4. 值为非函数的属性
+type NonFunctionProperties<T> = Pick<T, NonFunctionPropertyNames<T>>;
+
+interface Part {
+    id: number;
+    name: string;
+    subparts: Part[];
+    updatePart(newName: string): void;
+}
+
+type T40 = FunctionPropertyNames<Part>; // "updatePart"
+type T41 = NonFunctionPropertyNames<Part>; // "id" | "name" | "subparts"
+type T42 = FunctionProperties<Part>; // {updatePart: (newName: string) => void}
+type T43 = NonFunctionProperties<Part>; // { id: number, name: string, subparts: Part[]}
+// * 条件类型不能递归地调用自身
+
+/**
+ * * 条件类型的类型推断
+ * 在条件类型的`extends`子句中, 可以使用`infer`声明引入一个类型变量,并用于条件语句的赋值:
+ * 例如: `type ReturnType<T> = T extend (...args: any[]) => infer R ? R : any`;
+ * 可以嵌套, 验证多个类型:
+ */
+type Unpacked<T> = 
+    T extends (infer U)[] ? U :
+    T extends (...args: any[]) => infer U ? U :
+    T extends Promise<infer U> ? U :
+    T;
+
+// * 如果同一个类型变量有多个infer候选类型, 类型变量会被赋值为联合类型
+type Moo<T> = T extends { a: infer U, b: infer U } ? U : never;
+type T10 = Moo<{ a: string, b: string }>;  // string
+type T11 = Moo<{ a: string, b: number }>;  // string | number
+// * 如果同一个类型变量需要同时满足多个infer候选类型, 如作为函数参数时, 类型变量会被赋值为交叉类型
+type Bar<T> = T extends { a: (x: infer U) => void, b: (x: infer U) => void } ? U : never;
+type T20 = Bar<{ a: (x: string) => void, b: (x: string) => void }>;  // string
+type T21 = Bar<{ a: (x: string) => void, b: (x: number) => void }>;  // string & number
+
+// infer不能直接用在限制性子句, 应该用在条件子句中
+
+
+/**
+ * * 预定义条件类型
+ * TypeScript 2.8 adds several predefined conditional types to lib.d.ts:
+ * 1. Extract<T, U> – Extract from T those types that are assignable to U.
+ * 2. Exclude<T, U> – Exclude from T those types that are assignable to U.
+ * 3. NonNullable<T> – Exclude null and undefined from T.
+ * 4. ReturnType<T> – Obtain the return type of a function type.
+ * 5. InstanceType<T> – Obtain the instance type of a constructor function type.
  */
